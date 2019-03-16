@@ -68,6 +68,7 @@ class FCNDecoder(cnn_basenet.CNNBaseModel):
             score_final = self.conv2d(inputdata=deconv_final, out_channel=2,
                                       kernel_size=1, use_bias=False, name='score_final')
 
+
             ret['logits'] = score_final
             ret['deconv'] = deconv_final
 

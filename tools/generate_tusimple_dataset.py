@@ -90,8 +90,14 @@ def process_json_file(json_file_path, src_dir, ori_dst_dir, binary_dst_dir, inst
             dst_instance_image_path = ops.join(instance_dst_dir, image_name_new)
             dst_rgb_image_path = ops.join(ori_dst_dir, image_name_new)
 
+            # in order to speed up training process, image can be resized in advance
+            dst_binary_image = cv2.resize(dst_binary_image, (512, 256), interpolation=cv2.INTER_NEAREST)
             cv2.imwrite(dst_binary_image_path, dst_binary_image)
+
+            dst_instance_image = cv2.resize(dst_instance_image, (512, 256), interpolation=cv2.INTER_NEAREST)
             cv2.imwrite(dst_instance_image_path, dst_instance_image)
+
+            src_image = cv2.resize(src_image, (512, 256), interpolation=cv2.INTER_LINEAR)
             cv2.imwrite(dst_rgb_image_path, src_image)
 
             print('Process {:s} success'.format(image_name))
@@ -120,6 +126,7 @@ def gen_train_sample(src_dir, b_gt_image_dir, i_gt_image_dir, image_dir):
             assert ops.exists(image_path), '{:s} not exist'.format(image_path)
             assert ops.exists(instance_gt_image_path), '{:s} not exist'.format(instance_gt_image_path)
 
+            print(f'Checking {image_name}')
             b_gt_image = cv2.imread(binary_gt_image_path, cv2.IMREAD_COLOR)
             i_gt_image = cv2.imread(instance_gt_image_path, cv2.IMREAD_COLOR)
             image = cv2.imread(image_path, cv2.IMREAD_COLOR)
@@ -147,12 +154,10 @@ def process_tusimple_dataset(src_dir):
 
     for json_label_path in glob.glob('{:s}/label*.json'.format(src_dir)):
         json_label_name = ops.split(json_label_path)[1]
-
         shutil.copyfile(json_label_path, ops.join(traing_folder_path, json_label_name))
 
     for json_label_path in glob.glob('{:s}/test*.json'.format(src_dir)):
         json_label_name = ops.split(json_label_path)[1]
-
         shutil.copyfile(json_label_path, ops.join(testing_folder_path, json_label_name))
 
     gt_image_dir = ops.join(traing_folder_path, 'gt_image')
@@ -173,5 +178,4 @@ def process_tusimple_dataset(src_dir):
 
 if __name__ == '__main__':
     args = init_args()
-
     process_tusimple_dataset(args.src_dir)

@@ -1,0 +1,30 @@
+# single image
+python3 test_lanenet.py \
+	--is_batch False \
+	--batch_size 1 \
+	--weights_path model/tusimple_lanenet/tusimple_lanenet_vgg_2018-10-19-13-33-56.ckpt-200000 \
+	--image_path data/tusimple_test_image/0.jpg
+
+# sample images
+python3 test_lanenet.py \
+	--is_batch True \
+	--batch_size 4 \
+	--save_dir data/tusimple_test_image/ret \
+	--weights_path model/tusimple_lanenet/tusimple_lanenet_vgg_2018-10-19-13-33-56.ckpt-200000 \
+	--image_path data/tusimple_test_image/
+
+# test set
+python3 test_lanenet.py \
+	--is_batch True \
+	--batch_size 4 \
+	--save_dir /root/lanenet/dataset/tusimple/test_ret \
+	--weights_path model/tusimple_lanenet/tusimple_lanenet_vgg_2018-10-19-13-33-56.ckpt-200000 \
+	--image_path /root/lanenet/dataset/tusimple/test_set/clips
+
+# train on sample data
+python3 train_lanenet.py --net vgg --dataset_dir data/training_data_example/
+
+# train on complete dataset
+python3 train_lanenet.py --net dense --dataset_dir /root/lanenet/dataset/tusimple/train_set/training/
+
+python3 train_lanenet_modify.py --net mobile --dataset_dir /root/lanenet/dataset/tusimple/train_set/training/

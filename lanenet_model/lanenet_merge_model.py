@@ -10,12 +10,18 @@
 """
 import tensorflow as tf
 
+from encoder_decoder_model import coord_conv
 from encoder_decoder_model import vgg_encoder
+from encoder_decoder_model import mobile_encoder
 from encoder_decoder_model import fcn_decoder
 from encoder_decoder_model import dense_encoder
 from encoder_decoder_model import cnn_basenet
 from lanenet_model import lanenet_discriminative_loss
 
+from config import global_config
+
+
+CFG = global_config.cfg
 
 class LaneNet(cnn_basenet.CNNBaseModel):
     """
@@ -28,6 +34,9 @@ class LaneNet(cnn_basenet.CNNBaseModel):
         super(LaneNet, self).__init__()
         self._net_flag = net_flag
         self._phase = phase
+
+        self._add_coord = coord_conv.AddCoords(CFG.TRAIN.IMG_HEIGHT, CFG.TRAIN.IMG_WIDTH, False)
+
         if self._net_flag == 'vgg':
             self._encoder = vgg_encoder.VGG16Encoder(phase=phase)
         elif self._net_flag == 'dense':
@@ -35,7 +44,10 @@ class LaneNet(cnn_basenet.CNNBaseModel):
                                                        with_bc=True,
                                                        phase=phase,
                                                        n=5)
+        elif self._net_flag == 'mobile':
+            self._encoder = mobile_encoder.MobielnetV2Encoder(phase=phase)
         self._decoder = fcn_decoder.FCNDecoder(phase=phase)
+
         return
 
     def __str__(self):
@@ -54,9 +66,15 @@ class LaneNet(cnn_basenet.CNNBaseModel):
         :return:
         """
         with tf.variable_scope(name):
+
+            # Add coordinate map
+            coord_ret = self._add_coord(input_tensor)
+
             # first encode
-            encode_ret = self._encoder.encode(input_tensor=input_tensor,
+            encode_ret = self._encoder.encode(input_tensor=coord_ret,
                                               name='encode')
+            # encode_ret = self._encoder.encode(input_tensor=input_tensor,
+            #                                   name='encode')
 
             # second decode
             if self._net_flag.lower() == 'vgg':
@@ -72,6 +90,19 @@ class LaneNet(cnn_basenet.CNNBaseModel):
                                                   decode_layer_list=['Dense_Block_5',
                                                                      'Dense_Block_4',
                                                                      'Dense_Block_3'])
+            elif self._net_flag.lower() == 'mobile':
+                '''Version A'''
+                decode_ret = self._decoder.decode(input_tensor_dict=encode_ret,
+                                                  name='decode',
+                                                  decode_layer_list=['layer_19',
+                                                                     'layer_14',
+                                                                     'layer_7'])
+                # '''Version B'''
+                # decode_ret = self._decoder.decode(input_tensor_dict=encode_ret,
+                #                                   name='decode',
+                #                                   decode_layer_list=['layer_19',
+                #                                                      'layer_8',
+                #                                                      'layer_5'])
                 return decode_ret
 
     def compute_loss(self, input_tensor, binary_label, instance_label, name):
@@ -88,7 +119,7 @@ class LaneNet(cnn_basenet.CNNBaseModel):
             inference_ret = self._build_model(input_tensor=input_tensor, name='inference')
             # 计算二值分割损失函数
             decode_logits = inference_ret['logits']
-            binary_label_plain = tf.reshape(
+            binary_label_plain = tf.reshape(  # expand the binary label into a 1-D tensor
                 binary_label,
                 shape=[binary_label.get_shape().as_list()[0] *
                        binary_label.get_shape().as_list()[1] *
@@ -96,13 +127,27 @@ class LaneNet(cnn_basenet.CNNBaseModel):
             # 加入class weights
             unique_labels, unique_id, counts = tf.unique_with_counts(binary_label_plain)
             counts = tf.cast(counts, tf.float32)
-            inverse_weights = tf.divide(1.0,
-                                        tf.log(tf.add(tf.divide(tf.constant(1.0), counts),
-                                                      tf.constant(1.02))))
+
+            # original inv_weights
+            # inverse_weights = tf.divide(1.0,
+            #                             tf.log(tf.add(tf.divide(tf.constant(1.0), counts),
+            #                                           tf.constant(1.02))))
+            # inverse_weight = 1 / (log(1/counts + 1.02))  # There might be some problem with this function
+
+            # modified inv_weights
+            sum = tf.reduce_sum(counts)
+            weights = tf.divide(counts, sum)
+            inverse_weights = tf.multiply(tf.constant(1.0), tf.divide(1, weights))  # 25, 6.25,
+
             inverse_weights = tf.gather(inverse_weights, binary_label)
-            binary_segmenatation_loss = tf.losses.sparse_softmax_cross_entropy(
+
+            inverse_weights = tf.divide(25.0,  # 1.0
+                                        tf.log(tf.add(tf.divide(tf.constant(1.0), inverse_weights),
+                                                      tf.constant(1.02))))
+
+            binary_segmentation_loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=binary_label, logits=decode_logits, weights=inverse_weights)
-            binary_segmenatation_loss = tf.reduce_mean(binary_segmenatation_loss)
+            binary_segmentation_loss = tf.reduce_mean(binary_segmentation_loss)
 
             # 计算discriminative loss损失函数
             decode_deconv = inference_ret['deconv']
@@ -120,18 +165,18 @@ class LaneNet(cnn_basenet.CNNBaseModel):
             l2_reg_loss = tf.constant(0.0, tf.float32)
             for vv in tf.trainable_variables():
                 if 'bn' in vv.name:
-                    continue
+                    continue  # batch para isn't regulated
                 else:
                     l2_reg_loss = tf.add(l2_reg_loss, tf.nn.l2_loss(vv))
-            l2_reg_loss *= 0.001
-            total_loss = 0.5 * binary_segmenatation_loss + 0.5 * disc_loss + l2_reg_loss
+            l2_reg_loss *= 0.001  # lambda=0.001
+            total_loss = 0.5 * binary_segmentation_loss + 0.5 * disc_loss + l2_reg_loss
 
             ret = {
                 'total_loss': total_loss,
                 'binary_seg_logits': decode_logits,
                 'instance_seg_logits': pix_embedding,
-                'binary_seg_loss': binary_segmenatation_loss,
-                'discriminative_loss': disc_loss
+                'binary_seg_loss': binary_segmentation_loss,
+                'discriminative_loss': disc_loss,
             }
 
             return ret

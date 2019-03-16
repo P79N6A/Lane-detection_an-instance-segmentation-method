@@ -121,7 +121,9 @@ if __name__ == '__main__':
     except ImportError:
         pass
     train_dataset = lanenet_hnet_data_processor.DataSet(
-        ['/media/baidu/Data/Semantic_Segmentation/TUSimple_Lane_Detection/training/label_data_0531.json'])
+        ['/root/lanenet/dataset/tusimple/train_set/label_data_0531.json',
+         '/root/lanenet/dataset/tusimple/train_set/label_data_0313.json',
+         '/root/lanenet/dataset/tusimple/train_set/label_data_0601.json'])
 
     with tf.Session() as sess:
         # sess.run(tf.global_variables_initializer())
